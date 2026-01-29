@@ -80,6 +80,7 @@ class OptionsBot:
         
         self.is_running = False
         self.signals_sent_today = 0
+        self.shoonya = None  # Will be initialized on first use
         
         logger.info("✓ Bot initialized successfully")
     
@@ -87,9 +88,8 @@ class OptionsBot:
         """
         Fetch 1H and 5M data for given index
         
-        Uses FREE data sources:
-        1. NSE India website for live prices & option chain
-        2. Yahoo Finance for historical OHLC data
+        PRIMARY: Shoonya API (FREE, REAL-TIME)
+        FALLBACK: Yahoo Finance (if Shoonya fails)
         
         Returns:
             {
@@ -102,56 +102,104 @@ class OptionsBot:
         """
         
         try:
-            # Import free data fetchers
-            import sys
-            sys.path.insert(0, '/app')
-            from data.nse_fetcher import NSEFetcher, YahooFinanceFetcher
+            # Try Shoonya first (REAL-TIME, FREE)
+            from data.shoonya_fetcher import ShoonyaFetcher
             
-            nse = NSEFetcher()
-            yahoo = YahooFinanceFetcher()
+            # Check if Shoonya credentials exist
+            shoonya_user = os.getenv('SHOONYA_USER_ID')
+            shoonya_pass = os.getenv('SHOONYA_PASSWORD')
+            shoonya_totp = os.getenv('SHOONYA_TOTP_KEY')
             
-            # Get live spot price from NSE
-            logger.info(f"Fetching live {index} data from NSE...")
-            spot_data = nse.get_index_spot(index)
+            if all([shoonya_user, shoonya_pass, shoonya_totp]):
+                logger.info(f"🟢 Using SHOONYA API for {index} (REAL-TIME)")
+                
+                # Initialize Shoonya
+                if not hasattr(self, 'shoonya') or self.shoonya is None:
+                    self.shoonya = ShoonyaFetcher(shoonya_user, shoonya_pass, shoonya_totp)
+                
+                # Get spot price (REAL-TIME)
+                spot = self.shoonya.get_spot_price(index)
+                
+                if not spot:
+                    raise Exception("Shoonya spot price failed")
+                
+                logger.info(f"✓ {index} Spot: ₹{spot:.2f} (REAL-TIME)")
+                
+                # Get historical data (REAL-TIME)
+                df_1h = self.shoonya.get_historical_data(index, interval='60', days=5)
+                df_5m = self.shoonya.get_historical_data(index, interval='5', days=1)
+                
+                if df_1h is None or df_5m is None:
+                    raise Exception("Shoonya historical data failed")
+                
+                logger.info(f"✓ Historical: {len(df_1h)} x 1H, {len(df_5m)} x 5M (REAL-TIME)")
+                
+                # Calculate ATM
+                strike_gap = 50 if index == 'NIFTY' else 100
+                atm_strike = round(spot / strike_gap) * strike_gap
+                
+                return {
+                    'df_1h': df_1h,
+                    'df_5m': df_5m,
+                    'spot': spot,
+                    'atm_strike': int(atm_strike),
+                    'lot_size': 50 if index == 'NIFTY' else 25,
+                    'source': 'SHOONYA'
+                }
             
-            if not spot_data:
-                logger.error(f"Failed to fetch spot data for {index}")
-                return self._generate_demo_data(index)
-            
-            spot = spot_data['last_price']
-            logger.info(f"✓ {index} Spot: ₹{spot:.2f} ({spot_data['pct_change']:+.2f}%)")
-            
-            # Get historical data from Yahoo Finance
-            yahoo_symbol = '^NSEI' if index == 'NIFTY' else '^NSEBANK'
-            
-            # Fetch 1H data (5 days worth)
-            df_1h = yahoo.get_historical_data(yahoo_symbol, interval='1h', period='5d')
-            
-            # Fetch 5M data (today)
-            df_5m = yahoo.get_historical_data(yahoo_symbol, interval='5m', period='1d')
-            
-            if df_1h is None or df_5m is None:
-                logger.warning("Yahoo Finance data unavailable, using demo data")
-                return self._generate_demo_data(index)
-            
-            # Calculate ATM strike
-            strike_gap = 50 if index == 'NIFTY' else 100
-            atm_strike = round(spot / strike_gap) * strike_gap
-            
-            logger.info(f"✓ Historical data loaded: {len(df_1h)} x 1H, {len(df_5m)} x 5M")
-            
-            return {
-                'df_1h': df_1h,
-                'df_5m': df_5m,
-                'spot': spot,
-                'atm_strike': int(atm_strike),
-                'lot_size': 50 if index == 'NIFTY' else 25
-            }
-            
+            else:
+                logger.warning("⚠️ Shoonya credentials not found, falling back to Yahoo")
+                raise Exception("No Shoonya credentials")
+                
         except Exception as e:
-            logger.error(f"Error fetching free data: {e}")
-            logger.warning("Falling back to demo data mode")
-            return self._generate_demo_data(index)
+            logger.warning(f"Shoonya failed: {e}, using Yahoo Finance fallback")
+            
+            # Fallback to Yahoo Finance
+            try:
+                from data.nse_fetcher import NSEFetcher, YahooFinanceFetcher
+                
+                logger.info(f"🟡 Using YAHOO FINANCE for {index} (15-20 min delay)")
+                
+                nse = NSEFetcher()
+                yahoo = YahooFinanceFetcher()
+                
+                # Get spot from NSE
+                spot_data = nse.get_index_spot(index)
+                
+                if not spot_data:
+                    logger.error(f"NSE spot fetch failed for {index}")
+                    return self._generate_demo_data(index)
+                
+                spot = spot_data['last_price']
+                logger.info(f"✓ {index} Spot: ₹{spot:.2f} ({spot_data['pct_change']:+.2f}%)")
+                
+                # Get historical from Yahoo
+                yahoo_symbol = '^NSEI' if index == 'NIFTY' else '^NSEBANK'
+                
+                df_1h = yahoo.get_historical_data(yahoo_symbol, interval='1h', period='5d')
+                df_5m = yahoo.get_historical_data(yahoo_symbol, interval='5m', period='1d')
+                
+                if df_1h is None or df_5m is None:
+                    logger.warning("Yahoo Finance unavailable, using demo")
+                    return self._generate_demo_data(index)
+                
+                strike_gap = 50 if index == 'NIFTY' else 100
+                atm_strike = round(spot / strike_gap) * strike_gap
+                
+                logger.info(f"✓ Historical: {len(df_1h)} x 1H, {len(df_5m)} x 5M (DELAYED)")
+                
+                return {
+                    'df_1h': df_1h,
+                    'df_5m': df_5m,
+                    'spot': spot,
+                    'atm_strike': int(atm_strike),
+                    'lot_size': 50 if index == 'NIFTY' else 25,
+                    'source': 'YAHOO'
+                }
+                
+            except Exception as e2:
+                logger.error(f"Yahoo Finance also failed: {e2}")
+                return self._generate_demo_data(index)
     
     def _generate_demo_data(self, index: str):
         """
