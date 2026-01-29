@@ -18,6 +18,8 @@ import pytz
 from loguru import logger
 import sys
 import os
+import pandas as pd
+import numpy as np
 
 # Configure logging
 logger.remove()
@@ -86,7 +88,7 @@ class OptionsBot:
         Fetch 1H and 5M data for given index
         
         In production: Use Zerodha Kite API
-        For now: Returns dummy data structure
+        For testing: Generates realistic dummy data
         
         Returns:
             {
@@ -98,23 +100,67 @@ class OptionsBot:
             }
         """
         
-        # TODO: Replace with actual Kite API calls
+        # TODO: Replace with actual Kite API calls when ready
         # Example:
         # from data.fetcher import DataFetcher
         # fetcher = DataFetcher(KITE_API_KEY, KITE_ACCESS_TOKEN)
-        # 
-        # instrument_token = get_instrument_token(index)
-        # df_1h = kite.historical_data(instrument_token, from_date, to_date, '60minute')
-        # df_5m = kite.historical_data(instrument_token, from_date, to_date, '5minute')
+        # df_1h = fetcher.fetch_1h_data(instrument_token, bars=60)
+        # df_5m = fetcher.fetch_5m_data(instrument_token, bars=60)
         
-        logger.warning(f"Using dummy data for {index} - implement actual API")
+        logger.warning(f"⚠️  DEMO MODE: Generating dummy data for {index}")
         
-        # Dummy data structure
+        import pandas as pd
+        import numpy as np
+        
+        # Generate realistic trending data for testing
+        now = datetime.now(self.timezone)
+        
+        # 1H data (60 bars - uptrend)
+        dates_1h = pd.date_range(end=now, periods=60, freq='H')
+        base_1h = 22000 if index == 'NIFTY' else 48000
+        trend = np.linspace(base_1h, base_1h + 500, 60)  # Uptrend
+        noise = np.random.randn(60) * 20
+        
+        df_1h = pd.DataFrame({
+            'datetime': dates_1h,
+            'open': trend + noise,
+            'high': trend + noise + 30,
+            'low': trend + noise - 30,
+            'close': trend + noise + 10,
+            'volume': np.random.randint(100000, 500000, 60)
+        })
+        
+        # 5M data (60 bars - with pullback pattern)
+        dates_5m = pd.date_range(end=now, periods=60, freq='5min')
+        base_5m = base_1h + 490  # Near top of trend
+        trend_5m = np.linspace(base_5m - 50, base_5m, 60)
+        noise_5m = np.random.randn(60) * 5
+        
+        df_5m = pd.DataFrame({
+            'datetime': dates_5m,
+            'open': trend_5m + noise_5m,
+            'high': trend_5m + noise_5m + 10,
+            'low': trend_5m + noise_5m - 10,
+            'close': trend_5m + noise_5m + 5,
+            'volume': np.random.randint(50000, 200000, 60)
+        })
+        
+        # Create pullback setup in last few candles
+        df_5m.loc[df_5m.index[-3], 'close'] = base_5m - 10  # Pullback
+        df_5m.loc[df_5m.index[-2], 'low'] = base_5m - 15    # Touch EMA
+        df_5m.loc[df_5m.index[-1], 'open'] = base_5m - 8
+        df_5m.loc[df_5m.index[-1], 'close'] = base_5m + 5   # Bounce back
+        df_5m.loc[df_5m.index[-1], 'high'] = base_5m + 10
+        df_5m.loc[df_5m.index[-1], 'volume'] = 180000       # Volume spike
+        
+        spot = float(df_5m.iloc[-1]['close'])
+        atm_strike = round(spot / (50 if index == 'NIFTY' else 100)) * (50 if index == 'NIFTY' else 100)
+        
         return {
-            'df_1h': None,
-            'df_5m': None,
-            'spot': 22500.0 if index == 'NIFTY' else 48500.0,
-            'atm_strike': 22500 if index == 'NIFTY' else 48500,
+            'df_1h': df_1h,
+            'df_5m': df_5m,
+            'spot': spot,
+            'atm_strike': int(atm_strike),
             'lot_size': 50 if index == 'NIFTY' else 25
         }
     
