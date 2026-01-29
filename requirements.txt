@@ -10,7 +10,7 @@ requests>=2.31.0
 python-dotenv>=1.0.0
 
 # FREE data sources
-NorenRestApiPy>=0.0.24  # Shoonya/Finvasia API (REAL-TIME, FREE)
+NorenRestApiPy==0.0.22  # Shoonya/Finvasia API (REAL-TIME, FREE)
 pyotp>=2.9.0  # For Shoonya 2FA
 yfinance>=0.2.40  # Yahoo Finance (fallback, 15-20 min delay)
 
