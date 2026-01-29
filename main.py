@@ -35,11 +35,11 @@ logger.add(
 )
 
 # Import components
-from signal_generator import SignalGenerator
-from telegram_bot import TelegramAlerter
+from strategy.signal_generator import SignalGenerator
+from alerts.telegram_bot import TelegramAlerter
 
 # Import settings
-from settings import (
+from config.settings import (
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_CHAT_ID,
     TOTAL_CAPITAL,
@@ -100,9 +100,8 @@ class OptionsBot:
         
         # TODO: Replace with actual Kite API calls
         # Example:
-        # from kiteconnect import KiteConnect
-        # kite = KiteConnect(api_key=KITE_API_KEY)
-        # kite.set_access_token(KITE_ACCESS_TOKEN)
+        # from data.fetcher import DataFetcher
+        # fetcher = DataFetcher(KITE_API_KEY, KITE_ACCESS_TOKEN)
         # 
         # instrument_token = get_instrument_token(index)
         # df_1h = kite.historical_data(instrument_token, from_date, to_date, '60minute')
@@ -316,4 +315,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-      
