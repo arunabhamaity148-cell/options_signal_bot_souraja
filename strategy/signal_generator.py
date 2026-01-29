@@ -22,10 +22,10 @@ import pytz
 from loguru import logger
 
 # Import our modules
-from htf_filter import HTFTrendFilter, BiasType
-from ltf_entry import LTFEntry
-from filters import SignalFilters
-from position_sizer import PositionSizer, DailyLimits
+from strategy.htf_filter import HTFTrendFilter, BiasType
+from strategy.ltf_entry import LTFEntry
+from strategy.filters import SignalFilters
+from risk.position_sizer import PositionSizer, DailyLimits
 
 
 class SignalGenerator:
