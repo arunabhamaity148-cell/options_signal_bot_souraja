@@ -19,7 +19,10 @@ import numpy as np
 from typing import Literal
 from loguru import logger
 
-BiasType = Literal['CALL_ONLY', 'PUT_ONLY', 'NO_TRADE']
+try:
+    BiasType = Literal['CALL_ONLY', 'PUT_ONLY', 'NO_TRADE']
+except:
+    BiasType = str
 
 
 class HTFTrendFilter:
