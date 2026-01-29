@@ -1,28 +1,23 @@
 # Options Signal Bot - Dependencies
-# Python 3.9+
+# Python 3.9+ (Railway uses Python 3.13)
 
-# Data & Analysis
-pandas==2.0.3
-numpy==1.24.3
-ta-lib==0.4.28
+# Data & Analysis (updated versions for Python 3.13)
+pandas>=2.1.0
+numpy>=1.26.0
 
 # API & Data Fetching
-requests==2.31.0
-kiteconnect==4.3.0
-python-dotenv==1.0.0
+requests>=2.31.0
+python-dotenv>=1.0.0
 
 # Telegram
-python-telegram-bot==20.4
-
-# Backtesting
-backtrader==1.9.78.123
+python-telegram-bot>=20.4
 
 # Utilities
-pytz==2023.3
-schedule==1.2.0
+pytz>=2023.3
+schedule>=1.2.0
 
 # Logging
-loguru==0.7.0
+loguru>=0.7.0
 
-# Database (optional - for storing signals)
-sqlalchemy==2.0.19
+# Note: kiteconnect removed - optional dependency
+# Install separately if needed: pip install kiteconnect
