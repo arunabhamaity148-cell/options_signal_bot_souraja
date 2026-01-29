@@ -8,6 +8,7 @@ numpy>=1.26.0
 # API & Data Fetching
 requests>=2.31.0
 python-dotenv>=1.0.0
+yfinance>=0.2.40
 
 # Telegram
 python-telegram-bot>=20.4
