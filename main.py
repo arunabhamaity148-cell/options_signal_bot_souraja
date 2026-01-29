@@ -87,8 +87,9 @@ class OptionsBot:
         """
         Fetch 1H and 5M data for given index
         
-        In production: Use Zerodha Kite API
-        For testing: Generates realistic dummy data
+        Uses FREE data sources:
+        1. NSE India website for live prices & option chain
+        2. Yahoo Finance for historical OHLC data
         
         Returns:
             {
@@ -100,25 +101,70 @@ class OptionsBot:
             }
         """
         
-        # TODO: Replace with actual Kite API calls when ready
-        # Example:
-        # from data.fetcher import DataFetcher
-        # fetcher = DataFetcher(KITE_API_KEY, KITE_ACCESS_TOKEN)
-        # df_1h = fetcher.fetch_1h_data(instrument_token, bars=60)
-        # df_5m = fetcher.fetch_5m_data(instrument_token, bars=60)
-        
+        try:
+            # Import free data fetchers
+            import sys
+            sys.path.insert(0, '/app')
+            from data.nse_fetcher import NSEFetcher, YahooFinanceFetcher
+            
+            nse = NSEFetcher()
+            yahoo = YahooFinanceFetcher()
+            
+            # Get live spot price from NSE
+            logger.info(f"Fetching live {index} data from NSE...")
+            spot_data = nse.get_index_spot(index)
+            
+            if not spot_data:
+                logger.error(f"Failed to fetch spot data for {index}")
+                return self._generate_demo_data(index)
+            
+            spot = spot_data['last_price']
+            logger.info(f"✓ {index} Spot: ₹{spot:.2f} ({spot_data['pct_change']:+.2f}%)")
+            
+            # Get historical data from Yahoo Finance
+            yahoo_symbol = '^NSEI' if index == 'NIFTY' else '^NSEBANK'
+            
+            # Fetch 1H data (5 days worth)
+            df_1h = yahoo.get_historical_data(yahoo_symbol, interval='1h', period='5d')
+            
+            # Fetch 5M data (today)
+            df_5m = yahoo.get_historical_data(yahoo_symbol, interval='5m', period='1d')
+            
+            if df_1h is None or df_5m is None:
+                logger.warning("Yahoo Finance data unavailable, using demo data")
+                return self._generate_demo_data(index)
+            
+            # Calculate ATM strike
+            strike_gap = 50 if index == 'NIFTY' else 100
+            atm_strike = round(spot / strike_gap) * strike_gap
+            
+            logger.info(f"✓ Historical data loaded: {len(df_1h)} x 1H, {len(df_5m)} x 5M")
+            
+            return {
+                'df_1h': df_1h,
+                'df_5m': df_5m,
+                'spot': spot,
+                'atm_strike': int(atm_strike),
+                'lot_size': 50 if index == 'NIFTY' else 25
+            }
+            
+        except Exception as e:
+            logger.error(f"Error fetching free data: {e}")
+            logger.warning("Falling back to demo data mode")
+            return self._generate_demo_data(index)
+    
+    def _generate_demo_data(self, index: str):
+        """
+        Fallback: Generate demo data if free sources fail
+        """
         logger.warning(f"⚠️  DEMO MODE: Generating dummy data for {index}")
         
-        import pandas as pd
-        import numpy as np
-        
-        # Generate realistic trending data for testing
         now = datetime.now(self.timezone)
         
         # 1H data (60 bars - uptrend)
         dates_1h = pd.date_range(end=now, periods=60, freq='H')
         base_1h = 22000 if index == 'NIFTY' else 48000
-        trend = np.linspace(base_1h, base_1h + 500, 60)  # Uptrend
+        trend = np.linspace(base_1h, base_1h + 500, 60)
         noise = np.random.randn(60) * 20
         
         df_1h = pd.DataFrame({
@@ -130,9 +176,9 @@ class OptionsBot:
             'volume': np.random.randint(100000, 500000, 60)
         })
         
-        # 5M data (60 bars - with pullback pattern)
+        # 5M data (60 bars - with pullback)
         dates_5m = pd.date_range(end=now, periods=60, freq='5min')
-        base_5m = base_1h + 490  # Near top of trend
+        base_5m = base_1h + 490
         trend_5m = np.linspace(base_5m - 50, base_5m, 60)
         noise_5m = np.random.randn(60) * 5
         
@@ -145,13 +191,13 @@ class OptionsBot:
             'volume': np.random.randint(50000, 200000, 60)
         })
         
-        # Create pullback setup in last few candles
-        df_5m.loc[df_5m.index[-3], 'close'] = base_5m - 10  # Pullback
-        df_5m.loc[df_5m.index[-2], 'low'] = base_5m - 15    # Touch EMA
+        # Create pullback setup
+        df_5m.loc[df_5m.index[-3], 'close'] = base_5m - 10
+        df_5m.loc[df_5m.index[-2], 'low'] = base_5m - 15
         df_5m.loc[df_5m.index[-1], 'open'] = base_5m - 8
-        df_5m.loc[df_5m.index[-1], 'close'] = base_5m + 5   # Bounce back
+        df_5m.loc[df_5m.index[-1], 'close'] = base_5m + 5
         df_5m.loc[df_5m.index[-1], 'high'] = base_5m + 10
-        df_5m.loc[df_5m.index[-1], 'volume'] = 180000       # Volume spike
+        df_5m.loc[df_5m.index[-1], 'volume'] = 180000
         
         spot = float(df_5m.iloc[-1]['close'])
         atm_strike = round(spot / (50 if index == 'NIFTY' else 100)) * (50 if index == 'NIFTY' else 100)
