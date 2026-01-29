@@ -20,6 +20,8 @@ import sys
 import os
 import pandas as pd
 import numpy as np
+from threading import Thread
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # Configure logging
 logger.remove()
@@ -54,6 +56,47 @@ from config.settings import (
     TRADING_END_MINUTE,
     DATA_REFRESH_INTERVAL
 )
+
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    """
+    Simple HTTP handler for Railway health check
+    Prevents idle timeout by responding to HTTP pings
+    """
+    
+    def do_GET(self):
+        """Handle GET requests"""
+        if self.path == '/health':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'OK - Bot is running')
+        elif self.path == '/':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            
+            status_html = f"""
+            <html>
+            <head><title>Options Signal Bot</title></head>
+            <body style="font-family: monospace; padding: 20px;">
+            <h1>🤖 Options Signal Bot</h1>
+            <p><strong>Status:</strong> RUNNING ✅</p>
+            <p><strong>Time:</strong> {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M:%S IST')}</p>
+            <p><strong>Monitoring:</strong> NIFTY, BANKNIFTY</p>
+            <hr>
+            <small>This endpoint prevents Railway idle timeout</small>
+            </body>
+            </html>
+            """
+            self.wfile.write(status_html.encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def log_message(self, format, *args):
+        """Suppress default HTTP logs"""
+        pass
 
 
 class OptionsBot:
@@ -370,6 +413,22 @@ class OptionsBot:
         
         logger.info("Counters reset - ready for new day")
     
+    def _start_http_server(self):
+        """
+        Start HTTP server in background thread for Railway keep-alive
+        Prevents idle timeout by responding to health checks
+        """
+        port = int(os.getenv('PORT', 8080))
+        
+        def run_server():
+            server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+            logger.info(f"✓ HTTP server started on port {port} (Railway keep-alive)")
+            server.serve_forever()
+        
+        # Run in daemon thread
+        thread = Thread(target=run_server, daemon=True)
+        thread.start()
+    
     def start(self):
         """
         Start the bot
@@ -377,6 +436,9 @@ class OptionsBot:
         logger.info("\n" + "=" * 60)
         logger.info("OPTIONS SIGNAL BOT STARTING")
         logger.info("=" * 60 + "\n")
+        
+        # Start HTTP server for Railway keep-alive
+        self._start_http_server()
         
         # Send startup message
         logger.info("Sending startup notification...")
