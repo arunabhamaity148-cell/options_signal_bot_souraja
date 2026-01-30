@@ -70,7 +70,11 @@ class NSEFetcher:
             
             # Find the index
             for index in data.get('data', []):
-                if index.get('index') == symbol:
+                index_name = index.get('index', '')
+                
+                # NSE uses different names
+                if (symbol == 'NIFTY' and index_name in ['NIFTY 50', 'Nifty 50']) or \
+                   (symbol == 'BANKNIFTY' and index_name in ['NIFTY BANK', 'Nifty Bank']):
                     return {
                         'symbol': symbol,
                         'last_price': float(index.get('last', 0)),
