@@ -8,7 +8,8 @@ asyncpg==0.29.0
 # Data processing
 pandas==2.1.4
 numpy==1.26.2
-pandas-ta==0.3.14b0
+pandas-ta
+
 
 # Database
 SQLAlchemy==2.0.23
