@@ -88,10 +88,6 @@ class TradingBotApp:
         await telegram_bot.start()
         logger.info("▶️  Telegram bot running")
         
-        # Start WebSocket handler (optional - for real-time updates)
-        # asyncio.create_task(ws_handler.start())
-        # logger.info("▶️  WebSocket handler running")
-        
         # Start signal engine
         signal_task = asyncio.create_task(signal_engine.start())
         logger.info("▶️  Signal engine running")
@@ -119,7 +115,6 @@ class TradingBotApp:
         logger.info("Shutting down gracefully...")
         logger.info("=" * 60)
         
-        # Stop components in reverse order
         logger.info("Stopping Telegram bot...")
         await telegram_bot.stop()
         
