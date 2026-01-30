@@ -253,7 +253,7 @@ class OptionsBot:
         now = datetime.now(self.timezone)
         
         # 1H data (60 bars - uptrend)
-        dates_1h = pd.date_range(end=now, periods=60, freq='H')
+        dates_1h = pd.date_range(end=now, periods=60, freq='h')  # Changed H to h
         base_1h = 22000 if index == 'NIFTY' else 48000
         trend = np.linspace(base_1h, base_1h + 500, 60)
         noise = np.random.randn(60) * 20
