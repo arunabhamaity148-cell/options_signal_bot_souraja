@@ -1,10 +1,10 @@
 """
-Technical indicators calculator using pandas-ta
+Technical indicators calculator using ta library
 """
 import numpy as np
 import pandas as pd
 from typing import Dict, Tuple, Optional
-import pandas_ta as ta
+import ta
 from config.settings import settings
 
 
@@ -14,59 +14,43 @@ class TechnicalIndicators:
     @staticmethod
     def calculate_ema(data: pd.Series, period: int) -> pd.Series:
         """Calculate Exponential Moving Average"""
-        return ta.ema(data, length=period)
+        return ta.trend.EMAIndicator(data, window=period).ema_indicator()
     
     @staticmethod
     def calculate_rsi(data: pd.Series, period: int = 14) -> pd.Series:
         """Calculate Relative Strength Index"""
-        return ta.rsi(data, length=period)
+        return ta.momentum.RSIIndicator(data, window=period).rsi()
     
     @staticmethod
     def calculate_adx(high: pd.Series, low: pd.Series, 
                       close: pd.Series, period: int = 14) -> pd.Series:
         """Calculate Average Directional Index"""
-        adx_df = ta.adx(high, low, close, length=period)
-        if adx_df is not None and f'ADX_{period}' in adx_df.columns:
-            return adx_df[f'ADX_{period}']
-        return pd.Series(0, index=close.index)
+        return ta.trend.ADXIndicator(high, low, close, window=period).adx()
     
     @staticmethod
     def calculate_atr(high: pd.Series, low: pd.Series, 
                       close: pd.Series, period: int = 14) -> pd.Series:
         """Calculate Average True Range"""
-        atr = ta.atr(high, low, close, length=period)
-        return atr if atr is not None else pd.Series(0, index=close.index)
+        return ta.volatility.AverageTrueRange(high, low, close, window=period).average_true_range()
     
     @staticmethod
     def calculate_macd(data: pd.Series) -> Tuple[pd.Series, pd.Series, pd.Series]:
         """Calculate MACD"""
-        macd_df = ta.macd(data, fast=12, slow=26, signal=9)
-        if macd_df is not None:
-            return (
-                macd_df['MACD_12_26_9'], 
-                macd_df['MACDs_12_26_9'], 
-                macd_df['MACDh_12_26_9']
-            )
+        macd = ta.trend.MACD(data, window_slow=26, window_fast=12, window_sign=9)
         return (
-            pd.Series(0, index=data.index),
-            pd.Series(0, index=data.index),
-            pd.Series(0, index=data.index)
+            macd.macd(),
+            macd.macd_signal(),
+            macd.macd_diff()
         )
     
     @staticmethod
     def calculate_bbands(data: pd.Series, period: int = 20) -> Tuple[pd.Series, pd.Series, pd.Series]:
         """Calculate Bollinger Bands"""
-        bbands_df = ta.bbands(data, length=period, std=2)
-        if bbands_df is not None:
-            return (
-                bbands_df[f'BBU_{period}_2.0'],
-                bbands_df[f'BBM_{period}_2.0'],
-                bbands_df[f'BBL_{period}_2.0']
-            )
+        bb = ta.volatility.BollingerBands(data, window=period, window_dev=2)
         return (
-            pd.Series(0, index=data.index),
-            pd.Series(0, index=data.index),
-            pd.Series(0, index=data.index)
+            bb.bollinger_hband(),
+            bb.bollinger_mavg(),
+            bb.bollinger_lband()
         )
     
     @staticmethod
@@ -79,7 +63,7 @@ class TechnicalIndicators:
             lower_shadow = min(close.iloc[i], open_price.iloc[i]) - low.iloc[i]
             upper_shadow = high.iloc[i] - max(close.iloc[i], open_price.iloc[i])
             
-            if lower_shadow > 2 * body and upper_shadow < body and close.iloc[i] > open_price.iloc[i]:
+            if body > 0 and lower_shadow > 2 * body and upper_shadow < body and close.iloc[i] > open_price.iloc[i]:
                 result.iloc[i] = 100
         return result
     
@@ -93,7 +77,7 @@ class TechnicalIndicators:
             upper_shadow = high.iloc[i] - max(close.iloc[i], open_price.iloc[i])
             lower_shadow = min(close.iloc[i], open_price.iloc[i]) - low.iloc[i]
             
-            if upper_shadow > 2 * body and lower_shadow < body and close.iloc[i] < open_price.iloc[i]:
+            if body > 0 and upper_shadow > 2 * body and lower_shadow < body and close.iloc[i] < open_price.iloc[i]:
                 result.iloc[i] = 100
         return result
     
@@ -120,31 +104,41 @@ class TechnicalIndicators:
     @staticmethod
     def detect_morning_star(open_price: pd.Series, high: pd.Series,
                            low: pd.Series, close: pd.Series) -> pd.Series:
-        """Detect Morning Star pattern (simplified)"""
+        """Detect Morning Star pattern"""
         result = pd.Series(0, index=close.index)
         for i in range(2, len(close)):
+            body1 = abs(close.iloc[i-2] - open_price.iloc[i-2])
+            body2 = abs(close.iloc[i-1] - open_price.iloc[i-1])
+            body3 = abs(close.iloc[i] - open_price.iloc[i])
+            
             if (close.iloc[i-2] < open_price.iloc[i-2] and
-                abs(close.iloc[i-1] - open_price.iloc[i-1]) < 0.01 * close.iloc[i-1] and
-                close.iloc[i] > open_price.iloc[i]):
+                body2 < 0.3 * body1 and
+                close.iloc[i] > open_price.iloc[i] and
+                body3 > body1):
                 result.iloc[i] = 100
         return result
     
     @staticmethod
     def detect_evening_star(open_price: pd.Series, high: pd.Series,
                            low: pd.Series, close: pd.Series) -> pd.Series:
-        """Detect Evening Star pattern (simplified)"""
+        """Detect Evening Star pattern"""
         result = pd.Series(0, index=close.index)
         for i in range(2, len(close)):
+            body1 = abs(close.iloc[i-2] - open_price.iloc[i-2])
+            body2 = abs(close.iloc[i-1] - open_price.iloc[i-1])
+            body3 = abs(close.iloc[i] - open_price.iloc[i])
+            
             if (close.iloc[i-2] > open_price.iloc[i-2] and
-                abs(close.iloc[i-1] - open_price.iloc[i-1]) < 0.01 * close.iloc[i-1] and
-                close.iloc[i] < open_price.iloc[i]):
+                body2 < 0.3 * body1 and
+                close.iloc[i] < open_price.iloc[i] and
+                body3 > body1):
                 result.iloc[i] = 100
         return result
     
     @staticmethod
     def calculate_volume_ma(volume: pd.Series, period: int = 20) -> pd.Series:
         """Calculate Volume Moving Average"""
-        return ta.sma(volume, length=period)
+        return ta.trend.SMAIndicator(volume, window=period).sma_indicator()
     
     @staticmethod
     def calculate_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
