@@ -10,7 +10,6 @@ from typing import Optional
 from config.settings import settings
 from database.models import db
 from core.binance_client import binance_client
-from core.websocket_handler import ws_handler
 from core.signal_engine import signal_engine
 from telegram.bot import telegram_bot
 from utils.helpers import setup_logging, validate_environment
@@ -37,7 +36,8 @@ class TradingBotApp:
             logger.error("Environment validation failed:")
             for issue in validation['issues']:
                 logger.error(f"  - {issue}")
-            sys.exit(1)
+            # DON'T exit - start health server anyway
+            logger.warning("Starting with missing credentials - bot will not function fully")
         
         if validation['warnings']:
             for warning in validation['warnings']:
@@ -45,52 +45,67 @@ class TradingBotApp:
         
         logger.info("✓ Environment validated")
         
-        # Initialize database
-        try:
-            db.initialize()
-            await db.initialize_async()
-            logger.info("✓ Database connected")
-        except Exception as e:
-            logger.error(f"Database connection failed: {e}")
-            sys.exit(1)
-        
-        # Initialize Binance client
-        try:
-            await binance_client.initialize()
-            logger.info("✓ Binance client initialized")
-        except Exception as e:
-            logger.error(f"Binance initialization failed: {e}")
-            sys.exit(1)
-        
-        # Initialize Telegram bot
-        try:
-            await telegram_bot.initialize()
-            logger.info("✓ Telegram bot initialized")
-        except Exception as e:
-            logger.error(f"Telegram bot initialization failed: {e}")
-            sys.exit(1)
-        
-        # Start health check server
+        # Start health check server FIRST
         try:
             await health_server.start()
             logger.info("✓ Health check server started")
         except Exception as e:
             logger.error(f"Health check server failed: {e}")
-            sys.exit(1)
+            raise
+        
+        # Try to initialize database
+        try:
+            if settings.DATABASE_URL and "postgresql" in settings.DATABASE_URL:
+                db.initialize()
+                await db.initialize_async()
+                logger.info("✓ Database connected")
+            else:
+                logger.warning("⚠️ DATABASE_URL not configured - database features disabled")
+        except Exception as e:
+            logger.error(f"Database connection failed: {e}")
+            logger.warning("Continuing without database...")
+        
+        # Try to initialize Binance client
+        try:
+            if settings.BINANCE_API_KEY and settings.BINANCE_SECRET:
+                await binance_client.initialize()
+                logger.info("✓ Binance client initialized")
+            else:
+                logger.warning("⚠️ Binance credentials not set - market data disabled")
+        except Exception as e:
+            logger.error(f"Binance initialization failed: {e}")
+            logger.warning("Continuing without Binance...")
+        
+        # Try to initialize Telegram bot
+        try:
+            if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_CHAT_ID:
+                await telegram_bot.initialize()
+                logger.info("✓ Telegram bot initialized")
+            else:
+                logger.warning("⚠️ Telegram credentials not set - notifications disabled")
+        except Exception as e:
+            logger.error(f"Telegram bot initialization failed: {e}")
+            logger.warning("Continuing without Telegram...")
         
         logger.info("=" * 60)
-        logger.info("All components initialized successfully!")
+        logger.info("Startup complete (some features may be disabled)")
         logger.info("=" * 60)
     
     async def run(self):
         """Run the main application"""
-        # Start Telegram bot
-        await telegram_bot.start()
-        logger.info("▶️  Telegram bot running")
-        
-        # Start signal engine
-        signal_task = asyncio.create_task(signal_engine.start())
-        logger.info("▶️  Signal engine running")
+        # Only start if Telegram is configured
+        if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_CHAT_ID:
+            await telegram_bot.start()
+            logger.info("▶️  Telegram bot running")
+            
+            # Only start signal engine if all systems ready
+            if settings.BINANCE_API_KEY and settings.BINANCE_SECRET:
+                signal_task = asyncio.create_task(signal_engine.start())
+                logger.info("▶️  Signal engine running")
+            else:
+                logger.warning("Signal engine disabled - missing Binance credentials")
+        else:
+            logger.warning("Bot features disabled - missing Telegram credentials")
         
         logger.info("")
         logger.info("🚀 Bot is now running!")
@@ -98,15 +113,12 @@ class TradingBotApp:
         logger.info(f"⏱️  Signal check interval: {settings.SIGNAL_CHECK_INTERVAL}s")
         logger.info(f"🔧 Mode: {'TESTNET' if settings.BINANCE_TESTNET else 'LIVE'}")
         logger.info("")
+        logger.info("Health check available at /health")
         logger.info("Press Ctrl+C to stop...")
         logger.info("=" * 60)
         
         # Wait for shutdown signal
         await self.shutdown_event.wait()
-        
-        # Stop signal engine
-        signal_engine.stop()
-        await signal_task
     
     async def shutdown(self):
         """Graceful shutdown"""
@@ -115,20 +127,29 @@ class TradingBotApp:
         logger.info("Shutting down gracefully...")
         logger.info("=" * 60)
         
-        logger.info("Stopping Telegram bot...")
-        await telegram_bot.stop()
+        try:
+            logger.info("Stopping Telegram bot...")
+            await telegram_bot.stop()
+        except:
+            pass
         
-        logger.info("Stopping WebSocket handler...")
-        await ws_handler.stop()
+        try:
+            logger.info("Closing Binance client...")
+            await binance_client.close()
+        except:
+            pass
         
-        logger.info("Closing Binance client...")
-        await binance_client.close()
+        try:
+            logger.info("Closing database connections...")
+            await db.close_async()
+        except:
+            pass
         
-        logger.info("Closing database connections...")
-        await db.close_async()
-        
-        logger.info("Stopping health check server...")
-        await health_server.stop()
+        try:
+            logger.info("Stopping health check server...")
+            await health_server.stop()
+        except:
+            pass
         
         logger.info("=" * 60)
         logger.info("Shutdown complete. Goodbye!")
@@ -170,7 +191,7 @@ async def main():
         logger.info("Keyboard interrupt received")
     except Exception as e:
         logger.exception(f"Fatal error: {e}")
-        sys.exit(1)
+        # Don't exit with error - let health check keep running
     finally:
         # Shutdown
         await app.shutdown()
