@@ -1,4 +1,6 @@
 """Telegram module initialization"""
-from .bot_telegram import telegram_bot, TradingBot
+# Don't import here to avoid circular dependency
+# Import directly where needed using:
+# from telegram.bot_telegram import telegram_bot
 
-__all__ = ["telegram_bot", "TradingBot"]
+__all__ = []
