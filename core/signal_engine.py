@@ -6,6 +6,7 @@ import logging
 from typing import Optional, Dict, List
 from datetime import datetime, timedelta
 import pandas as pd
+from bot_telegram.bot import telegram_bot
 
 from config.settings import settings
 from core.binance_client import binance_client
