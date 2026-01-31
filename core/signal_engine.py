@@ -6,7 +6,6 @@ import logging
 from typing import Optional, Dict, List
 from datetime import datetime, timedelta
 import pandas as pd
-import importlib.util
 
 from config.settings import settings
 from core.binance_client import binance_client
@@ -14,13 +13,21 @@ from strategies.ema_pullback import ema_strategy
 from risk.position_sizer import risk_manager
 from database.models import db
 
-# Import telegram_bot using importlib to avoid conflict
-spec = importlib.util.spec_from_file_location("tg_bot_module", "/app/telegram/bot_telegram.py")
-tg_bot_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(tg_bot_module)
-telegram_bot = tg_bot_module.telegram_bot
-
 logger = logging.getLogger(__name__)
+
+# Import telegram_bot only when needed to avoid circular import
+_telegram_bot = None
+
+def get_telegram_bot():
+    """Lazy import telegram bot"""
+    global _telegram_bot
+    if _telegram_bot is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("tg_bot_module", "/app/telegram/bot_telegram.py")
+        tg_bot_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tg_bot_module)
+        _telegram_bot = tg_bot_module.telegram_bot
+    return _telegram_bot
 
 
 class SignalEngine:
