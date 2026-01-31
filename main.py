@@ -62,6 +62,7 @@ async def initialize_database():
         return db
     except Exception as e:
         logger.warning(f"⚠️  Database: {e}")
+        traceback.print_exc()
         return None
 
 
@@ -74,13 +75,21 @@ async def initialize_binance():
         return binance_client
     except Exception as e:
         logger.warning(f"⚠️  Binance: {e}")
+        traceback.print_exc()
         return None
 
 
 async def initialize_telegram():
     """Initialize Telegram bot with error handling"""
     try:
-        from bot_telegram.bot import telegram_bot  # Changed import
+        # Import from telegram/bot_telegram.py file
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("tg_bot_module", "/app/telegram/bot_telegram.py")
+        tg_bot_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tg_bot_module)
+        
+        telegram_bot = tg_bot_module.telegram_bot
+        
         await telegram_bot.initialize()
         await telegram_bot.start()
         logger.info("✓ Telegram bot started")
@@ -100,6 +109,7 @@ async def start_signal_engine():
         return signal_engine
     except Exception as e:
         logger.warning(f"⚠️  Signal engine: {e}")
+        traceback.print_exc()
         return None
 
 
