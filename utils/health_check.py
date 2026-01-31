@@ -25,34 +25,49 @@ class HealthCheckServer:
         self.app.router.add_get('/', self.root)
     
     async def health_check(self, request):
-        """Health check endpoint"""
+        """Health check endpoint - always return healthy if server is running"""
         return web.json_response({
             'status': 'healthy',
             'timestamp': datetime.utcnow().isoformat(),
-            'uptime_seconds': (datetime.utcnow() - self.start_time).total_seconds()
+            'uptime_seconds': (datetime.utcnow() - self.start_time).total_seconds(),
+            'message': 'Server is running'
         })
     
     async def status(self, request):
         """Detailed status endpoint"""
-        from core.signal_engine import signal_engine
-        from core.binance_client import binance_client
+        try:
+            from core.signal_engine import signal_engine
+            signal_running = signal_engine.running
+        except:
+            signal_running = False
+        
+        try:
+            from core.binance_client import binance_client
+            binance_connected = binance_client.client is not None
+        except:
+            binance_connected = False
         
         return web.json_response({
             'status': 'running',
             'start_time': self.start_time.isoformat(),
             'uptime_seconds': (datetime.utcnow() - self.start_time).total_seconds(),
-            'signal_engine_running': signal_engine.running,
-            'binance_connected': binance_client.client is not None,
-            'config': {
-                'testnet': settings.BINANCE_TESTNET,
+            'features': {
+                'signal_engine': signal_running,
+                'binance_connected': binance_connected,
+                'testnet_mode': settings.BINANCE_TESTNET,
                 'trading_pairs': len(settings.TRADING_PAIRS),
                 'signal_interval': settings.SIGNAL_CHECK_INTERVAL
+            },
+            'environment': {
+                'binance_api_configured': bool(settings.BINANCE_API_KEY),
+                'telegram_configured': bool(settings.TELEGRAM_BOT_TOKEN),
+                'database_configured': bool(settings.DATABASE_URL and 'postgresql' in settings.DATABASE_URL)
             }
         })
     
     async def root(self, request):
         """Root endpoint"""
-        return web.Response(text="Crypto Options Trading Bot - Running ✓")
+        return web.Response(text="Crypto Options Trading Bot - Running ✓\n\nEndpoints:\n- /health\n- /status")
     
     async def start(self):
         """Start health check server"""
