@@ -1,4 +1,4 @@
 """Telegram module initialization"""
-from .bot import telegram_bot, TradingBot
+from .bot_telegram import telegram_bot, TradingBot
 
 __all__ = ["telegram_bot", "TradingBot"]
