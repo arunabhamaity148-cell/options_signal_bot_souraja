@@ -80,13 +80,14 @@ async def initialize_binance():
 async def initialize_telegram():
     """Initialize Telegram bot with error handling"""
     try:
-        from telegram.bot import telegram_bot
+        from bot_telegram.bot import telegram_bot  # Changed import
         await telegram_bot.initialize()
         await telegram_bot.start()
         logger.info("✓ Telegram bot started")
         return telegram_bot
     except Exception as e:
         logger.warning(f"⚠️  Telegram: {e}")
+        traceback.print_exc()
         return None
 
 
@@ -108,7 +109,6 @@ async def main():
     logger.info("🚀 Crypto Options Trading Signal Bot")
     logger.info("=" * 60)
     
-    # Track what's running
     components = {}
     
     try:
@@ -159,6 +159,14 @@ async def main():
             components['signal_engine'] = await start_signal_engine()
         else:
             logger.info("  ⏭️  Skipped (dependencies not ready)")
+            missing = []
+            if not components.get('binance'):
+                missing.append("Binance")
+            if not components.get('telegram'):
+                missing.append("Telegram")
+            if not components.get('database'):
+                missing.append("Database")
+            logger.info(f"  Missing: {', '.join(missing)}")
         
         # Summary
         logger.info("\n" + "=" * 60)
@@ -190,14 +198,12 @@ async def main():
         logger.error(traceback.format_exc())
         logger.info("⚠️  Continuing to run despite error...")
         
-        # Keep health server running even if something fails
         while True:
             await asyncio.sleep(3600)
     
     finally:
         logger.info("\n🛑 Shutting down...")
         
-        # Cleanup
         for name, component in components.items():
             try:
                 if name == 'health_server':
@@ -215,7 +221,6 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        # Set up signal handlers
         def signal_handler(sig, frame):
             logger.info(f"\n⚠️  Received signal {sig}")
             sys.exit(0)
@@ -223,7 +228,6 @@ if __name__ == "__main__":
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
         
-        # Run bot
         asyncio.run(main())
     
     except Exception as e:
